@@ -46,12 +46,12 @@ class NewFilmsPipeline:
         # Extraire uniquement le nombre de séances, s'il existe
         if 'salles' in item:
             item['salles'] = self.extract_sessions(item['salles'])
-
+        #nettoyer le champ realisateur 
         if item['realisateur']:
             premiere_valeur = item['realisateur'][0]
             if premiere_valeur == 'De':
                 item['realisateur'].pop(0)
-
+        #nettoyer le champ acteur
         if item['acteurs']:
             premiere_valeur = item['acteurs'][0]
             if premiere_valeur == 'Avec':
