@@ -65,9 +65,12 @@ DOWNLOADER_MIDDLEWARES = {
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
    "imdb.pipelines.NewFilmsPipeline": 300,
-   'imdb.pipelines.MySQLStorePipeline': 400,
+   'imdb.pipelines.MySQLStorePipeline': 800,
 }
-
+MYSQL_USER = 'Spies'
+MYSQL_PASSWORD = 'Simplon1948'
+MYSQL_HOST = 'dbcinapps.mysql.database.azure.com'
+MYSQL_DATABASE = 'dbcinapps'
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
 #AUTOTHROTTLE_ENABLED = True

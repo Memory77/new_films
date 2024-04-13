@@ -119,59 +119,76 @@ class NewFilmsPipeline:
                 # Si la conversion échoue, retourner la chaîne originale ou une valeur par défaut
                 return date_str
             
-    
 import mysql.connector
 from mysql.connector import Error as MySQLError
+from scrapy.exceptions import NotConfigured
+class MySQLStorePipeline:
+    def __init__(self, db_info):
+        self.db_info = db_info
 
-class MySQLStorePipeline(object):
+    @classmethod
+    def from_crawler(cls, crawler):
+        db_info = {
+            'user': crawler.settings.get('MYSQL_USER'),
+            'password': crawler.settings.get('MYSQL_PASSWORD'),
+            'host': crawler.settings.get('MYSQL_HOST'),
+            'database': crawler.settings.get('MYSQL_DATABASE')
+        }
+        if not all(db_info.values()):
+            raise NotConfigured("Database configuration is missing.")
+        return cls(db_info)
+
     def open_spider(self, spider):
         try:
-            self.conn = mysql.connector.connect(
-                user='Spies', 
-                password='Simplon1948', 
-                host='dbcinapps.mysql.database.azure.com', 
-                database='dbcinapps'
-            )
+            self.conn = mysql.connector.connect(**self.db_info)
             self.cursor = self.conn.cursor()
         except MySQLError as e:
             spider.logger.error(f"Erreur de connexion à la base de données : {e}")
             raise
 
     def close_spider(self, spider):
-        if self.cursor:
-            self.cursor.close()
-        if self.conn:
-            try:
-                self.conn.close()
-            except MySQLError as e:
-                spider.logger.error(f"Erreur lors de la fermeture de la connexion à la base de données : {e}")
+        self.cursor.close()
+        self.conn.close()
 
     def process_item(self, item, spider):
-        insert_query = """
+        film_id = self.insert_film(item)
+        for role, people in [('acteur', item.get('acteurs', [])), ('réalisateur', item.get('realisateur', []))]:
+            for person in people:
+                person_id = self.ensure_person_exists(person)
+                self.link_person_to_film(film_id, person_id, role)
+        return item
+
+    def insert_film(self, item):
+        query = """
         INSERT INTO Films (titre, duree, salles, genre, date_sortie, pays, studio, description, image, budget, entrees, anecdotes) 
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE 
-        duree = VALUES(duree),
-        salles = VALUES(salles),
-        genre = VALUES(genre),
-        date_sortie = VALUES(date_sortie),
-        pays = VALUES(pays),
-        studio = VALUES(studio),
-        description = VALUES(description),
-        image = VALUES(image),
-        budget = VALUES(budget),
-        entrees = VALUES(entrees),
-        anecdotes = VALUES(anecdotes);
+        duree = VALUES(duree), salles = VALUES(salles), genre = VALUES(genre), 
+        date_sortie = VALUES(date_sortie), pays = VALUES(pays), studio = VALUES(studio),
+        description = VALUES(description), image = VALUES(image), budget = VALUES(budget), 
+        entrees = VALUES(entrees), anecdotes = VALUES(anecdotes);
         """
-        try:
-            self.cursor.execute(insert_query, (
-                item.get('titre'), item.get('duree'), item.get('salles'), item.get('genre'),
-                item.get('date_sortie'), item.get('pays'), item.get('studio'), item.get('description'),
-                item.get('image'), item.get('budget'), item.get('entrees'), item.get('anecdotes')
-            ))
-            self.conn.commit()
-        except MySQLError as e:
-            spider.logger.error(f"Erreur lors de l'insertion ou de la mise à jour des données : {e}")
-            return item
+        self.cursor.execute(query, (
+            item.get('titre'), item.get('duree'), item.get('salles'), item.get('genre'),
+            item.get('date_sortie'), item.get('pays'), item.get('studio'), item.get('description'),
+            item.get('image'), item.get('budget'), item.get('entrees'), item.get('anecdotes')
+        ))
+        self.conn.commit()
+        return self.cursor.lastrowid
 
-        
+    def ensure_person_exists(self, person_name):
+        self.cursor.execute("SELECT id_personne FROM Personnes WHERE nom = %s", (person_name,))
+        result = self.cursor.fetchone()
+        if result:
+            return result[0]
+        self.cursor.execute("INSERT INTO Personnes (nom) VALUES (%s)", (person_name,))
+        self.conn.commit()
+        return self.cursor.lastrowid
+
+    def link_person_to_film(self, film_id, person_id, role):
+        query = """
+        INSERT INTO Participations (id_film, id_personne, role) VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE role = VALUES(role);
+        """
+        self.cursor.execute(query, (film_id, person_id, role))
+        self.conn.commit()
