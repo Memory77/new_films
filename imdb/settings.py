@@ -65,6 +65,7 @@ DOWNLOADER_MIDDLEWARES = {
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
    "imdb.pipelines.NewFilmsPipeline": 300,
+   'imdb.pipelines.MySQLStorePipeline': 400,
 }
 
 # Enable and configure the AutoThrottle extension (disabled by default)

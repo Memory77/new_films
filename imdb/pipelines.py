@@ -2,6 +2,8 @@ from itemadapter import ItemAdapter
 import re
 from scrapy.exceptions import DropItem
 from datetime import datetime
+import os
+
 class NewFilmsPipeline:
     def process_item(self, item, spider):
 
@@ -36,7 +38,6 @@ class NewFilmsPipeline:
         
 
         #nettoyer anecdotes
-       
         if item['anecdotes']:
             item['anecdotes'] = item.get('anecdotes', '').strip()
             premiere_lettre = item['anecdotes'][0]
@@ -58,7 +59,8 @@ class NewFilmsPipeline:
                 item['acteurs'].pop(0)
         
         return item
-
+    
+   
     def clean_duration(self, duration_html):
         # Extrait la durée en minutes à partir du HTML ou retourne None si non trouvable
         if duration_html:
@@ -116,3 +118,60 @@ class NewFilmsPipeline:
             except ValueError:
                 # Si la conversion échoue, retourner la chaîne originale ou une valeur par défaut
                 return date_str
+            
+    
+import mysql.connector
+from mysql.connector import Error as MySQLError
+
+class MySQLStorePipeline(object):
+    def open_spider(self, spider):
+        try:
+            self.conn = mysql.connector.connect(
+                user='Spies', 
+                password='Simplon1948', 
+                host='dbcinapps.mysql.database.azure.com', 
+                database='dbcinapps'
+            )
+            self.cursor = self.conn.cursor()
+        except MySQLError as e:
+            spider.logger.error(f"Erreur de connexion à la base de données : {e}")
+            raise
+
+    def close_spider(self, spider):
+        if self.cursor:
+            self.cursor.close()
+        if self.conn:
+            try:
+                self.conn.close()
+            except MySQLError as e:
+                spider.logger.error(f"Erreur lors de la fermeture de la connexion à la base de données : {e}")
+
+    def process_item(self, item, spider):
+        insert_query = """
+        INSERT INTO Films (titre, duree, salles, genre, date_sortie, pays, studio, description, image, budget, entrees, anecdotes) 
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        duree = VALUES(duree),
+        salles = VALUES(salles),
+        genre = VALUES(genre),
+        date_sortie = VALUES(date_sortie),
+        pays = VALUES(pays),
+        studio = VALUES(studio),
+        description = VALUES(description),
+        image = VALUES(image),
+        budget = VALUES(budget),
+        entrees = VALUES(entrees),
+        anecdotes = VALUES(anecdotes);
+        """
+        try:
+            self.cursor.execute(insert_query, (
+                item.get('titre'), item.get('duree'), item.get('salles'), item.get('genre'),
+                item.get('date_sortie'), item.get('pays'), item.get('studio'), item.get('description'),
+                item.get('image'), item.get('budget'), item.get('entrees'), item.get('anecdotes')
+            ))
+            self.conn.commit()
+        except MySQLError as e:
+            spider.logger.error(f"Erreur lors de l'insertion ou de la mise à jour des données : {e}")
+            return item
+
+        
